@@ -13,12 +13,6 @@ if kbd is None:
     print("Keyboard not found")
     exit(1)
 
-# Grab the keyboard to capture its events exclusively
-kbd.grab()
-
-# Create a uinput device to inject modified events
-ui = UInput.from_device(kbd, name="virtual-keyboard")
-
 # Initialize state variables
 physical_state = {ecodes.KEY_A: False, ecodes.KEY_D: False, ecodes.KEY_W: False, ecodes.KEY_S: False}
 sending_state = {ecodes.KEY_A: False, ecodes.KEY_D: False, ecodes.KEY_W: False, ecodes.KEY_S: False}
@@ -26,6 +20,12 @@ last_strafe_press = None  # Tracks last pressed key for A/D pair
 last_forward_back_press = None  # Tracks last pressed key for W/S pair
 
 try:
+    # Grab the keyboard to capture its events exclusively
+    kbd.grab()
+    
+    # Create a uinput device to inject modified events
+    ui = UInput.from_device(kbd, name="virtual-keyboard")
+    
     for event in kbd.read_loop():
         if event.type == ecodes.EV_KEY and event.code in physical_state:
             key = event.code
@@ -39,6 +39,11 @@ try:
                         last_forward_back_press = key
             elif event.value == 0:  # Key up
                 physical_state[key] = False
+                # Reset last press tracker if the released key was the last one pressed
+                if key in (ecodes.KEY_A, ecodes.KEY_D) and last_strafe_press == key:
+                    last_strafe_press = ecodes.KEY_A if physical_state[ecodes.KEY_A] else (ecodes.KEY_D if physical_state[ecodes.KEY_D] else None)
+                elif key in (ecodes.KEY_W, ecodes.KEY_S) and last_forward_back_press == key:
+                    last_forward_back_press = ecodes.KEY_W if physical_state[ecodes.KEY_W] else (ecodes.KEY_S if physical_state[ecodes.KEY_S] else None)
 
             # Determine desired sending state for A/D (strafe)
             desired_sending = sending_state.copy()
