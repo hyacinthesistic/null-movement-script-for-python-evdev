@@ -1,11 +1,14 @@
 import evdev
 from evdev import InputDevice, UInput, ecodes
 
-# Find the keyboard device
+# Find the keyboard device (match on capability, not name substring,
+# since some keyboards don't have "keyboard" in dev.name, and some
+# expose extra non-keymatrix event nodes that do)
 kbd = None
 for path in evdev.list_devices():
     dev = InputDevice(path)
-    if 'keyboard' in dev.name.lower():
+    caps = dev.capabilities().get(ecodes.EV_KEY, [])
+    if ecodes.KEY_A in caps and ecodes.KEY_W in caps:
         kbd = dev
         break
 
@@ -19,6 +22,7 @@ sending_state = {ecodes.KEY_A: False, ecodes.KEY_D: False, ecodes.KEY_W: False, 
 last_strafe_press = None  # Tracks last pressed key for A/D pair
 last_forward_back_press = None  # Tracks last pressed key for W/S pair
 
+ui = None
 try:
     # Grab the keyboard to capture its events exclusively
     kbd.grab()
@@ -45,7 +49,7 @@ try:
                 elif key in (ecodes.KEY_W, ecodes.KEY_S) and last_forward_back_press == key:
                     last_forward_back_press = ecodes.KEY_W if physical_state[ecodes.KEY_W] else (ecodes.KEY_S if physical_state[ecodes.KEY_S] else None)
 
-            # Determine desired sending state for A/D (strafe)
+            # Determine desired sending state for A/D strafe
             desired_sending = sending_state.copy()
             if physical_state[ecodes.KEY_A] and physical_state[ecodes.KEY_D]:
                 if last_strafe_press == ecodes.KEY_A:
@@ -58,7 +62,7 @@ try:
                 desired_sending[ecodes.KEY_A] = physical_state[ecodes.KEY_A]
                 desired_sending[ecodes.KEY_D] = physical_state[ecodes.KEY_D]
 
-            # Determine desired sending state for W/S (forward/back)
+            # Determine desired sending state for W/S forward/back
             if physical_state[ecodes.KEY_W] and physical_state[ecodes.KEY_S]:
                 if last_forward_back_press == ecodes.KEY_W:
                     desired_sending[ecodes.KEY_W] = True
@@ -78,11 +82,13 @@ try:
                     sending_state[k] = desired_sending[k]
                     print(f"Pressed {k} {'down' if desired_sending[k] else 'up'}")  # Debug output
         else:
-            # Pass through all other events unchanged
             ui.write(event.type, event.code, event.value)
             ui.syn()
 except KeyboardInterrupt:
     print("Exiting script")
+except OSError as e:
+    print(f"Device error, exiting: {e}")
 finally:
     kbd.ungrab()
-    ui.close()
+    if ui is not None:
+        ui.close()
